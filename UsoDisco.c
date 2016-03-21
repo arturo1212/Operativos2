@@ -20,20 +20,37 @@
 #define NUM_THREADS     5
 #define MAX_PATH 256
 
-char** directorios;
-int* libre;
-volatile int auxiliar = 0, resultado = 0, yavio=0, todosL=0;
+/*------------------------------ESTRUCTURAS--------------------------------*/
 
-/*Queue - Linked List implementation*/
+/*Nodos para las Colas*/
 struct Node {
   char* data;
   struct Node* next;
 };
-// Two glboal variables to store address of front and rear nodes. 
+
+/*------------------------------------------------------------------------*/
+
+/*----------------------------VARIABLES GLOBALES -------------------------*/
+char** directorios;
+int* libre, resultados;
+volatile int auxiliar = 0, resultado = 0, yavio=0;
+
+/* Variables para la cola de Directorios*/
 struct Node* front = NULL;
 struct Node* rear = NULL;
+/*Variables para la cola de cajas*/
+struct Node* frente = NULL;
+struct Node* atras = NULL;
 
-// To Enqueue an integer
+/*-------------------------------------------------------------------------*/
+
+
+
+/* ------------------------------------------------------------------------
+-----------------------FUNCIONES PARA COLA DE DIRECTORIOS------------------
+---------------------------------------------------------------------------*/
+
+// ENCOLAR
 void Enqueue(char * x) {
   struct Node* temp = (struct Node*)malloc(sizeof(struct Node));
   temp->data = (char *)malloc(strlen(x)+1);
@@ -47,7 +64,7 @@ void Enqueue(char * x) {
   rear = temp;
 }
 
-// To Dequeue an integer.
+// DESENCOLAR
 void Dequeue() {
   struct Node* temp = front;
   if(front == NULL) {
@@ -63,6 +80,7 @@ void Dequeue() {
   free(temp);
 }
 
+// OBTENER EL PRIMERO
 char* Front() {
   if(front == NULL) {
     printf("Queue is empty\n");
@@ -71,6 +89,7 @@ char* Front() {
   return front->data;
 }
 
+// IMPRIMIR LA COLA COMPLETA
 void Print() {
   struct Node* temp = front;
   while(temp != NULL) {
@@ -79,10 +98,14 @@ void Print() {
   }
   printf("\n");
 }
+/*--------------------------------------------------------------
+----------------------------------------------------------------
+---------------------------------------------------------------*/
 
 
+/* ---------------------------------Funcion util para concatenar -------------------------*/
 char* concat(char *s1, char *s2){
-	/*	Esta funcion ocncatena dos strings y retorna n apuntador a caracteres con la concatenacion
+	/*	Esta funcion ocncatena dos strings y retorna un apuntador a caracteres con la concatenacion
 		
 		VARIABLES:
 			result 	: apuntador a caracteres a retornar con la concatenaicon
@@ -95,35 +118,56 @@ char* concat(char *s1, char *s2){
     strcat(result, s2);
     return result;
 }
+/*------------------------------------------------------------------------------------------*/
+
 
 int Buscar(char* cwd){
 	DIR *dir;
 	struct stat st;
 	struct dirent *ent;
     char filename[1024];
-    int size;
+    char* huevolteado = "*||*";
+    int size, resultadoT;
+    char* newdir;
     mode_t modo;
+
 		if ((dir = opendir (cwd)) != NULL) {
 	  		while ((ent = readdir (dir)) != NULL) {
-	  				if(ent->d_name[0]!='.' && ent->d_name[1]!='.'){ 			
-		    			snprintf(filename, sizeof filename, "%s/%s", cwd, ent->d_name);
-						stat(filename, &st);
-						size = st.st_size;
-						if(S_ISREG(st.st_mode)){
-							resultado = resultado + size;
-						}
-						else if(S_ISDIR(st.st_mode)){
-							if(strcmp(filename,cwd)!=0 && yavio==0){
-								Enqueue(filename);
-								printf("ENCOLAANDOOOOOOOO!!!!!!!!!!! %s\n",filename);
-							}
-						}
+	  			/*Verificamos que no estemos tomando el directorio anterior*/
+	  			if(ent->d_name[0]!='.' && ent->d_name[1]!='.'){
+	  				/* En filename almacenamos la ruta completa del archivo a examinar*/ 					
+		    		snprintf(filename,sizeof filename, "%s/%s", cwd, ent->d_name);
+
+		    		if(yavio==0 && S_ISDIR(st.st_mode) ){
+						Enqueue(filename);
 					}
+		    		/*Usamos la estructura stat para obtener atributos
+		    		importantes, como el peso.*/
+					stat(filename, &st);	
+
+					/* Si el archivo es regular, sumamos su peso*/										
+					if(S_ISREG(st.st_mode)){					
+						size = 4*(st.st_size/st.st_blksize);	// Calculamos el tamanio en bloques
+						if(st.st_size%st.st_blksize>0){			// Si la diferencia es mayor a cero	
+							size = size + 4;					// Toma otro bloque
+							}									
+							resultadoT = resultadoT + size;
+							//printf ("Regular : %s %d   %d \n ", filename, size, (int)st.st_blksize);
+						}
+
+					/* Si el archivo es de tipo directorio, lo agregamos a la lista*/
+					else if(S_ISDIR(st.st_mode)){
+						newdir = concat(newdir,huevolteado);
+						newdir = concat(newdir,filename);
+						//printf ("Directorio : %s \n Esta es nueva dir: %s \n ", filename, newdir);
+						
+					}
+				}
 	  		}
 	  	closedir (dir);
 		} 	
 		else {
-	  		perror ("");
+	  		//perror ("");
 	  		return 1;
 		}
 }
@@ -136,9 +180,8 @@ void *BuscarThread(void *threadid){
 		if(libre[tid] = 1 && directorios[tid]!=NULL){
 			Buscar(directorios[tid]);
 			libre[tid] = 0;
-			Print();
-			todosL--;
-    		sleep(2);
+			//Print();
+    		usleep(1);
 		}
 		else if(directorios[tid] == NULL){
 			libre[tid] = 0;
@@ -147,202 +190,33 @@ void *BuscarThread(void *threadid){
 	}
 }
 
-void *hola(void *threadid){
-    long tid;
-    tid = (long)threadid;
-	printf("Ahora imprimo %ld\n",tid);
-	auxiliar++;
-	libre[tid] = 0;						//Disponible
-
-}
-
 int main (int argc, char *argv[])
 {
 	/* Cosas para la busqueda en directorios*/
 
     /*Cosas para los threads*/
   	pthread_t threads[NUM_THREADS];
-  	int rc,i, listos = 0,index,cant_threads;
+  	int rc,i, listos = 0, todosL;
   	long t;
-  	char cwd[1024],palabra[1024],*salida,op1,op2;
+  	char cwd[1024],palabra[1024];
  	/*Asignar el tamanio del arreglo de mutex para el bloqueo*/
   	directorios = (char**)malloc(sizeof(char*)*NUM_THREADS);
   	/*Asignar el tamanio del arreglo de hilos libres*/
   	libre =(int*)malloc(sizeof(int)*NUM_THREADS);
- 	if(argc==1){
-		if (getcwd(cwd, sizeof(cwd)) != NULL){
-	        fprintf(stdout, "Current working dir: %s\n", cwd);
-		}else{
-			perror("getcwd() error");
-			return 0;
-		}
-		salida="/dev/stdout";
-	}else{
-		if(argc==2){
-			if((strcmp(argv[1],"-h"))==0){
-				printf("UsoDisco  [-h] |  [-n i] [-d directorio] [-o salida ]\n");
-				printf("------------------------------\n");
-printf("-h 	muestra por pantalla un mensaje de ayuda (sintaxis, descripción de parámetros, etc.) y termina\n");
-printf("-n i 	nivel de concurrencia solicitado. Por defecto crea un solo hilo trabajador\n");
-printf("-d directorio 	especifica un directorio desde donde calcula el espacio utilizado.");
-printf(" Por defecto hace el cálculo desde el directorio actual.\n");
-printf("-o salida 	archivo que contendrá la salida con la lista de directorios y el espacio en bloques");
-printf(" ocupado por los archivos regulares. El valor por defecto es la salida estándar.\n");
-			}else{
-				fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-				return 1;
-			}
-		}else{
-			if(argc==3){ //Falta anhadir valores por defecto
-				if(argv[1][0]=='-'){
-					if (argv[1][1]=='n'){
-
-						i=atoi(argv[2]);
-						if (getcwd(cwd, sizeof(cwd)) != NULL){
-					        fprintf(stdout, "Current working dir: %s\n", cwd);
-						}else{
-							perror("getcwd() error");
-							return 0;
-						}
-						salida="/dev/stdout";
-
-					}else if(argv[1][1]=='d'){
-						memcpy(cwd,argv[2],strlen(argv[2]));
-						cwd[strlen(cwd)] = '\0';
-						salida="/dev/stdout";
-
-					}else if(argv[1][1]=='o'){
-
-						salida = (char *)malloc(strlen(argv[2])+1);
-						memcpy(salida,argv[2],strlen(argv[2]));
-						salida[strlen(salida)] = '\0';
-						if (getcwd(cwd, sizeof(cwd)) != NULL){
-					        fprintf(stdout, "Current working dir: %s\n", cwd);
-						}else{
-							perror("getcwd() error");
-							return 0;
-						}
-
-					}else{
-						fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-						return 1;
-					}
-				}else{
-					fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-					return 1;
-				}
-			}else{
-				if(argc==4){
-					//Mensaje de error
-					fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-					return 1;
-				}else{
-					if(argc==5){ //Falta anhadir valores por defecto
-						if(argv[1][0]=='-'){
-							op1=argv[1][1];
-
-							if (argv[1][1]=='n'){
-								cant_threads=atoi(argv[2]);
-							}else if(argv[1][1]=='d'){
-								memcpy(cwd,argv[2],strlen(argv[2]));
-								cwd[strlen(cwd)] = '\0';
-							}else if(argv[1][1]=='o'){
-								salida = (char *)malloc(strlen(argv[2])+1);
-								memcpy(salida,argv[2],strlen(argv[2]));
-								salida[strlen(salida)] = '\0';
-							}else{
-								fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-								return 1;
-							}
-							if(argv[3][0]=='-'){
-								op2=argv[3][1];
-								if(argv[3][1]=='n'){
-									cant_threads=atoi(argv[4]);
-								}else if(argv[3][1]=='d'){
-									memcpy(cwd,argv[4],strlen(argv[4]));
-									cwd[strlen(cwd)] = '\0';
-								}else if(argv[3][1]=='o'){
-									salida = (char *)malloc(strlen(argv[4])+1);
-									memcpy(salida,argv[4],strlen(argv[4]));
-									salida[strlen(salida)] = '\0';
-								}else{
-									fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-									return 1;
-								}
-								if(op1=='n'){
-									if(op2=='d'){
-										salida="/dev/stdout";
-									}else if(op2=='o'){
-										if (getcwd(cwd, sizeof(cwd)) != NULL){
-											fprintf(stdout, "Current working dir: %s\n", cwd);
-										}else{
-											perror("getcwd() error");
-											return 0;
-										}
-									}
-								}else if (op1=='d'){
-									if(op2=='n'){
-										salida="/dev/stdout";
-									}
-								}else if(op1=='o'){
-									if(op2=='n'){
-										if (getcwd(cwd, sizeof(cwd)) != NULL){
-											fprintf(stdout, "Current working dir: %s\n", cwd);
-										}else{
-											perror("getcwd() error");
-											return 0;
-										}
-									}
-								}
-							}else{
-								fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-								return 1;
-							}
-						}else{
-							fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-							return 1;
-						}
-					}else{
-						if(argc=6){
-							//Mensaje de error
-							fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-							return 1;
-						}else if(argc>7){
-							//Mensaje de error
-							fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-							return 1;
-						}else{
-							for(index = 1;index<7;index+=2){
-								if(argv[index][0]=='-'){
-									if (argv[index][1]=='n'){
-										cant_threads=atoi(argv[index+1]);
-									}else if(argv[index][1]=='d'){
-										memcpy(cwd,argv[index+1],strlen(argv[index+1]));
-										cwd[strlen(cwd)] = '\0';
-									}else if(argv[index][1]=='o'){
-										salida = (char *)malloc(strlen(argv[index+1])+1);
-										memcpy(salida,argv[index+1],strlen(argv[index+1]));
-										salida[strlen(salida)] = '\0';
-									}else{
-										fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-										return 1;
-									}
-								}else{
-									fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
-									return 1;
-								}
-							}
-						}	
-					}
-				}
-			}
-		}
+ 
+/* Revisar los directorios del master para agregarlos a la cola*/
+	if (getcwd(cwd, sizeof(cwd)) != NULL){
+        fprintf(stdout, "Current working dir: %s\n", cwd);
 	}
-	/* Revisar los directorios del master para agregarlos a la cola*/
+    else{
+        perror("getcwd() error");
+    	return 0;
+	}
 	Buscar(cwd);
 	printf("La Cola es: \n\n");
 	Print();
-	printf("La Cola es: \n\n");
+	printf("\n\n\n\n");
+
   /*Inicializar cada posicion del arreglo de enteros en 5*/
   for(i=0;i<NUM_THREADS;i++){
     libre[i] = NUM_THREADS;
@@ -363,30 +237,37 @@ printf(" ocupado por los archivos regulares. El valor por defecto es la salida e
 	  		}
 	  	}
 	}
-	while(front!=NULL || todosL>0){
+	while(front!=NULL){
 	  	for(t=0; t<NUM_THREADS; t++){
 		  	if (libre[t] == 0 && front!=NULL){
-		  		todosL++;
+		  		printf("EL FRONT ES: %s\n",Front());
+		  		memset(palabra,0,sizeof(palabra));
 		  		memcpy(palabra,Front(),strlen(Front())+1);
 		  		directorios[t] = (char*)malloc(strlen(palabra)+1);
+		  		memset(directorios[t],0,sizeof(directorios[t]));
 		  		memcpy(directorios[t],palabra,strlen(palabra));
 		  		Dequeue();
 		  		libre[t] = 1;
 	    	} 
 		}
 	}
-	/*
-	Print();
-	 for(i=0;i<NUM_THREADS;i++){
-    	printf("STRING: %s\n",directorios[i]);    
-  }
-  */
+  	
+  	todosL = 5;
+ 	while(todosL>0){
+ 		todosL = 5;
+	   	for(i=0;i<NUM_THREADS;i++){
+	    	if (libre[i] == 0 ){
+	    		todosL--;
+	    	}
+	   	}
+ 	}
+
  	if(front==NULL){
  		for(i=0;i<NUM_THREADS;i++){
 	    	printf("directorio T %d: %s\n",i,directorios[i]);
 	   	}
 	   	for(i=0;i<NUM_THREADS;i++){
-	    	printf("libertad T %d: %d\n",i,libre[i]);
+	    	//printf("libertad T %d: %d\n",i,libre[i]);
 	   	}
  		printf("EL Front es NULL!\n Resultado: %d\n",resultado);
  	}
