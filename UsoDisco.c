@@ -172,6 +172,8 @@ int Buscar(char* cwd){
 		}
 }
 
+
+/*----------------------------------FUNCION DEL THREAD-------------------------*/
 void *BuscarThread(void *threadid){
 	long tid;
 	int i;
@@ -189,6 +191,8 @@ void *BuscarThread(void *threadid){
 		}
 	}
 }
+/*------------------------------------------------------------------------------*/
+
 
 int main (int argc, char *argv[])
 {
@@ -213,6 +217,7 @@ int main (int argc, char *argv[])
     	return 0;
 	}
 	Buscar(cwd);
+	yavio = 1;
 	printf("La Cola es: \n\n");
 	Print();
 	printf("\n\n\n\n");
@@ -222,8 +227,9 @@ int main (int argc, char *argv[])
     libre[i] = NUM_THREADS;
   }
 
-  yavio = 1;
-  /* Creacion de los Threads*/
+
+
+  /* ---------------------------------Creacion de los Threads--------------------------*/
   	while(auxiliar<NUM_THREADS){
 	  	for(t=0; t<NUM_THREADS; t++){
 			if (libre[t] == 5){
@@ -237,21 +243,29 @@ int main (int argc, char *argv[])
 	  		}
 	  	}
 	}
+	/*---------------------------------------------------------------------------------*/
+
+
+	/*---------------------------Asignar directorios a los Threads libres-------------*/
 	while(front!=NULL){
+		/* Recorrer cada todos los threads en busca de alguno disponible para trabajar*/
 	  	for(t=0; t<NUM_THREADS; t++){
+	  		/* Si el thread esta disponible y hay elementos en la cola*/
 		  	if (libre[t] == 0 && front!=NULL){
 		  		printf("EL FRONT ES: %s\n",Front());
-		  		memset(palabra,0,sizeof(palabra));
-		  		memcpy(palabra,Front(),strlen(Front())+1);
-		  		directorios[t] = (char*)malloc(strlen(palabra)+1);
+		  		directorios[t] = (char*)malloc(strlen((char*)Front())+1);
 		  		memset(directorios[t],0,sizeof(directorios[t]));
-		  		memcpy(directorios[t],palabra,strlen(palabra));
+		  		memcpy(directorios[t],palabra,strlen((char*)Front()));
+		  		printf("EL DIRECTORIO ES: %s\n",directorios[t]);
 		  		Dequeue();
 		  		libre[t] = 1;
 	    	} 
 		}
 	}
-  	
+  	/*----------------------------------------------------------------------------------*/
+
+
+  	/* Esperar a que todos los threads terminen*/
   	todosL = 5;
  	while(todosL>0){
  		todosL = 5;
