@@ -20,53 +20,74 @@
 #define NUM_THREADS     5
 #define MAX_PATH 256
 
-pthread_mutex_t *mutex;
-pthread_mutex_t *resultados;
+char* directorios;
+int* libre;
+volatile int auxiliar = 0, resultado;
 
-void *PrintHello(void *threadid)
-{
+void *CrearThread(void *threadid)
+{	
    long tid;
    tid = (long)threadid;
-   pthread_mutex_lock(&mutex[tid]);
    printf("Se ha creado el Thread #%ld!\n", tid);
-pthread_mutex_unlock(&mutex[tid]);
+   auxiliar++;
+   libre[tid] = 4;
 }
-void *hola(void *threadid){
 
-   long tid;
-   tid = (long)threadid;
-   	pthread_mutex_lock(&mutex[tid]);
+void *hola(void *threadid){
+    long tid;
+    tid = (long)threadid;
 	printf("Ahora imprimo %ld\n",tid);
-	sleep(2);
-	pthread_mutex_unlock(&mutex[tid]);
+	auxiliar++;
+	libre[tid] = 0;						//Disponible
+
 }
 
 int main (int argc, char *argv[])
 {
 
   pthread_t threads[NUM_THREADS];
-  int rc;
+  int rc,i;
   long t;
 
   /*Asignar el tamanio del arreglo de mutex para el bloqueo*/
-  mutex = malloc(sizeof(pthread_mutex_t)*NUM_THREADS);
-
-  for(t=0; t<NUM_THREADS; t++){
-    printf("Principal: Creando Thread %ld\n", t);
-    rc = pthread_create(&threads[t], NULL, PrintHello, (char *)t);
-    if (rc){
-       printf("ERROR; return code from pthread_create() is %d\n", rc);
-       exit(0);
-    }
+  directorios = malloc(sizeof(char*)*NUM_THREADS);
+  /*Asignar el tamanio del arreglo de hilos libres*/
+  libre = malloc(sizeof(int)*NUM_THREADS);
+  
+  /*Inicializar cada posicion del arreglo de enteros en 5*/
+  for(i=0;i<NUM_THREADS;i++){
+    libre[i] = NUM_THREADS;
   }
 
-  for(t=0; t<NUM_THREADS; t++){
-    rc = pthread_create(&threads[t], NULL, hola, (char *)t);
-    if (rc){
-       printf("ERROR; return code from pthread_create() is %d\n", rc);
-       exit(0);
-    }
-  }
-  pthread_exit(NULL);
+  /* Creacion de los Threads*/
+  	while(auxiliar<NUM_THREADS){
+	  	for(t=0; t<NUM_THREADS; t++){
+			if (libre[t] == 5){
+			    printf("Principal: Creando Thread %ld\n", t);
+			    libre[t] = 1;
+			    rc = pthread_create(&threads[t], NULL, CrearThread, (char *)t);
+			    if (rc){
+			       printf("ERROR; return code from pthread_create() is %d\n", rc);
+			       exit(0);
+			    }
+	  		}
+	  	}
+	}
 
+	printf("Auxiliar primero:%d\n",auxiliar);	
+	auxiliar = 0;
+	while(auxiliar<NUM_THREADS){
+	  for(t=0; t<NUM_THREADS; t++){
+	  	if (libre[t] == 4){
+	  		libre[t] = 1;
+		    rc = pthread_create(&threads[t], NULL, hola, (char *)t);
+		    if (rc){
+		       printf("ERROR; return code from pthread_create() is %d\n", rc);
+		       exit(0);
+		    }
+		  }
+		}
+
+	}
+	printf("Auxiliar:%d\n",auxiliar);
 }
