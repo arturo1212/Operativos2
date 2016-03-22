@@ -18,7 +18,6 @@
 #include <signal.h>
 
 #define NUM_THREADS     5
-#define MAX_PATH 256
 
 /*------------------------------ESTRUCTURAS--------------------------------*/
 
@@ -126,12 +125,13 @@ int Buscar(char* cwd){
 	struct stat st;
 	struct dirent *ent;
     char filename[1024];
-    char* huevolteado = "*||*";
-    int size, resultadoT;
+    char* sepStr = "*||*";
+    int size, resultadoT = 0;
     char* newdir;
     mode_t modo;
 
 		if ((dir = opendir (cwd)) != NULL) {
+			printf("El directorio %s contiene: \n\n",cwd);
 	  		while ((ent = readdir (dir)) != NULL) {
 	  			/*Verificamos que no estemos tomando el directorio anterior*/
 	  			if(ent->d_name[0]!='.' && ent->d_name[1]!='.'){
@@ -144,33 +144,32 @@ int Buscar(char* cwd){
 					stat(filename, &st);	
 
 					/* Si el archivo es regular, sumamos su peso*/										
-					if(S_ISREG(st.st_mode)){					
-						size = 4*(st.st_size/st.st_blksize);	// Calculamos el tamanio en bloques
-						if(st.st_size%st.st_blksize>0){			// Si la diferencia es mayor a cero	
-							size = size + 4;					// Toma otro bloque
-							}									
-							resultadoT = resultadoT + size;
-							//printf ("Regular : %s %d   %d \n ", filename, size, (int)st.st_blksize);
+					if(S_ISREG(st.st_mode)){													
+						resultadoT = resultadoT + (int)st.st_blocks;
+						printf ("     Regular : %d %s  \n ", (int)st.st_blocks,filename);
 						}
 
 					/* Si el archivo es de tipo directorio, lo agregamos a la lista*/
 					else if(S_ISDIR(st.st_mode)){
-						newdir = concat(newdir,huevolteado);
-						newdir = concat(newdir,filename);
-						if(esMaestro==0){
-							Enqueue(filename);
-						}
-						//printf ("Directorio : %s \n Esta es nueva dir: %s \n ", filename, newdir);
+						newdir = concat(newdir,sepStr);			//Le agregamos el separador
+						newdir = concat(newdir,filename);		// Le agregamos el nombre del archivo
+						//if(esMaestro==0){						// Si es el hilo maestro, encolamos el directorio.
+						Enqueue(filename);					
+						//}
+						printf ("     Directorio : %d %s \n",(int)st.st_blocks, filename);
 						
 					}
 				}
 	  		}
-	  		closedir (dir);
+	  		/*Cerramos el directorio y verificamos si el hilo maestro
+	  		ejecuto la funcion*/
+	  		closedir (dir);					
 			if(esMaestro ==0){
 				resultado = resultadoT;
 			}
-		} 	
-		else {
+		} 
+		/*Mensaje de error si no se pudo abrir el archivo*/	
+		else {			
 	  		perror ("");
 	  		printf("NO PUDE ABRIR: %s\n",cwd);
 	  		return 1;
@@ -186,10 +185,12 @@ void *BuscarThread(void *threadid){
    	tid = (long)threadid;
    	while(1){
 		if(libre[tid] = 1 && directorios[tid]!=NULL){
+			//printf("Soy el hilo: %ld\n",tid);
 			Buscar(directorios[tid]);
+			//printf("Soy el despues del hilo: %ld\n",tid);
 			libre[tid] = 0;
 			//Print();
-    		usleep(1);
+    		usleep(0);
 		}
 		else if(directorios[tid] == NULL){
 			libre[tid] = 0;
@@ -255,19 +256,23 @@ int main (int argc, char *argv[])
 
 
 	/*---------------------------Asignar directorios a los Threads libres-------------*/
-	while(front!=NULL){
+	while(front!=NULL && todosL>0){
+		todosL = 5;
 		/* Recorrer cada todos los threads en busca de alguno disponible para trabajar*/
 	  	for(t=0; t<NUM_THREADS; t++){
 	  		/* Si el thread esta disponible y hay elementos en la cola*/
 		  	if (libre[t] == 0 && front!=NULL){
-		  		printf("EL FRONT ES: %s\n",Front());
+		  		//printf("EL FRONT ES: %s\n",Front());
 		  		directorios[t] = (char*)malloc(strlen((char*)Front()));
 		  		memset(directorios[t],'\0',sizeof(directorios[t]));
 		  		memcpy(directorios[t],(char*)Front(),strlen((char*)Front())+1);
-		  		printf("EL DIRECTORIO ES: %s\n",directorios[t]);
+		  		//printf("EL DIRECTORIO ES: %s\n",directorios[t]);
 		  		Dequeue();
 		  		libre[t] = 1;
 	    	} 
+	    	if (libre[i] == 0 ){
+	    		todosL--;
+	    	}
 		}
 	}
   	/*----------------------------------------------------------------------------------*/
@@ -294,6 +299,6 @@ int main (int argc, char *argv[])
 	   	for(i=0;i<NUM_THREADS;i++){
 	    	//printf("libertad T %d: %d\n",i,libre[i]);
 	   	}
- 		printf("EL Front es NULL!\n Resultado: %d\n",resultado);
+ 		printf("Peso Total: %d\n",resultado);
  	}
 }
