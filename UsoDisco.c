@@ -17,7 +17,7 @@
 #include <time.h>
 #include <signal.h>
 
-#define NUM_THREADS     4
+#define NUM_THREADS     8
 
 /*------------------------------ESTRUCTURAS--------------------------------*/
 
@@ -32,8 +32,8 @@ struct Node {
 /*----------------------------VARIABLES GLOBALES -------------------------*/
 char** directorios;
 int* libre, resultados;
-volatile int auxiliar = 0, resultado = 0, esMaestro=0;
-pthread_mutex_t mutexsum;
+volatile int resultado = 0, esMaestro=0;
+pthread_mutex_t mutexsum,mutexsum1;
 
 /* Variables para la cola de Directorios*/
 struct Node* front = NULL;
@@ -176,19 +176,20 @@ void *BuscarThread(void *threadid){
    	tid = (long)threadid;
    	while(1){
    		if (front!= NULL){
-   			pthread_mutex_lock (&mutexsum);
 
+   			pthread_mutex_lock (&mutexsum);
+   			esMaestro++;
    			snprintf(direct,sizeof direct, "%s",(char*)Front());
    			Dequeue();
+			pthread_mutex_unlock (&mutexsum);
 
-   			pthread_mutex_unlock (&mutexsum);
-   			
    			i = Buscar(direct);
    			pthread_mutex_lock (&mutexsum);  
-   			resultado = resultado + i; 			
+   			resultado = resultado + i; 	
+   			esMaestro--;		
    			pthread_mutex_unlock (&mutexsum);
     		usleep(0);
-    		auxiliar++;
+
     	}
 	}
 }
@@ -205,12 +206,7 @@ int main (int argc, char *argv[])
   	int rc,i, listos = 0, todosL = 5;
   	long t;
   	char cwd[1024];
-  	
- 	/*Asignar el tamanio del arreglo de mutex para el bloqueo*/
-  	directorios = (char**)malloc(sizeof(char*)*NUM_THREADS);
-  	/*Asignar el tamanio del arreglo de hilos libres*/
-  	libre =(int*)malloc(sizeof(int)*NUM_THREADS);
- 
+ 	pthread_mutex_init(&mutexsum, NULL); 	
 /* Revisar los directorios del master para agregarlos a la cola*/
 	if (getcwd(cwd, sizeof(cwd)) != NULL){
         fprintf(stdout, "Current working dir: %s\n", cwd);
@@ -223,21 +219,13 @@ int main (int argc, char *argv[])
 	/*Buscar en el directorio*/
 	Buscar(cwd);		// CAMBIAR PARA QUE NO SEA POR DEFECTO
 
-	//Print();
-
-  for(i=0;i<NUM_THREADS;i++){
-  	//printf("Acomodando libres\n");
-    libre[i] = 0;
-  }
-  	//printf("Ya los arregle\n");
 
   /* ---------------------------------Creacion de los Threads--------------------------*/
 	for(t=0; t<NUM_THREADS; t++){
 		//printf("Principal: Creando Thread %ld\n", t);
-	    libre[t] = 1;
 	    rc = pthread_create(&threads[t], NULL, BuscarThread, (char *)t);
   	}
-	while(front!=NULL){
+	while(front!=NULL || esMaestro!=0){
 		//Print();
 	}
 	printf("Total: %d\n", resultado);
