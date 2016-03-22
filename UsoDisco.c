@@ -17,7 +17,7 @@
 #include <time.h>
 #include <signal.h>
 
-#define NUM_THREADS     8
+#define NUM_THREADS     5
 
 /*------------------------------ESTRUCTURAS--------------------------------*/
 
@@ -251,7 +251,7 @@ int main (int argc, char *argv[])
 				//free(arrayH[i].direc_asig);
 				arrayH[i].direc_asig = (char*)malloc(strlen(direct)+1);
 		  		memset(arrayH[i].direc_asig,'\0',sizeof(arrayH[i].direc_asig));
-		  		memcpy(arrayH[i].direc_asig,direct,strlen(direct));
+		  		memcpy(arrayH[i].direc_asig,direct,strlen(direct)+1);
 			
 				/*Marcar como ocupado al thread*/
 				arrayH[i].libre = 1;
