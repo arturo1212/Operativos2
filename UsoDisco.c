@@ -15,7 +15,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
-#include <signal.h>
 
 #define NUM_THREADS     5
 
@@ -23,31 +22,28 @@
 
 /*Nodos para las Colas*/
 struct Node {
-  char* data;
-  struct Node* next;
+  char* data;			// Informacion
+  struct Node* next;	// Apuntador al siguiente
 };
 
-struct Hilos { 
-	pthread_t thread;
+struct Hilos { 	
+	pthread_t thread;	// Para crear el thread
 	char* direc_asig; 	// Directorio de trabajo actual
 	int pesoArch;		// Peso que ha contado el Hilo
-	char* nuevosD;		// Lista de directorios nuevos encontrados.
 	int libre;			// Indica si el hilo esta libre o no.
 };
 
 /*------------------------------------------------------------------------*/
 
 /*----------------------------VARIABLES GLOBALES -------------------------*/
-int* libre, resultados;
-volatile int resultado = 0, completo=0, esMaestro = 0;
-pthread_mutex_t* mutexdir;
-pthread_mutex_t* mutexpeso;
-pthread_mutex_t mutexcola;
-struct Hilos* arrayH;
-
+volatile int completo=0;	// Entero para saber si todos los hilos terminaron
+							// de trabajar.
+struct Hilos* arrayH;		// Arreglo de estructuras de tipo hilo
+pthread_mutex_t mutexcola;	// Mutex usado para sincronizacion del uso
+							// de la cola entre los hilos
 /* Variables para la cola de Directorios*/
-struct Node* front = NULL;
-struct Node* rear = NULL;
+struct Node* front = NULL;	//Frente de la cola
+struct Node* rear = NULL;	//Parte posterior de la cola
 
 /*-------------------------------------------------------------------------*/
 
@@ -109,15 +105,12 @@ void Print() {
 ----------------------------------------------------------------
 ---------------------------------------------------------------*/
 
-
-/* ---------------------------------Funcion util para concatenar -------------------------*/
+/*Esta funcion ocncatena dos strings y retorna un apuntador a caracteres con la concatenacion*/
 char* concat(char *s1, char *s2){
-	/*	Esta funcion ocncatena dos strings y retorna un apuntador a caracteres con la concatenacion
-		
-		VARIABLES:
-			result 	: apuntador a caracteres a retornar con la concatenaicon
-			s1 		: primer string a concatenar
-			s2 		: segundo string a concatenar
+	/*VARIABLES:
+		result 	: apuntador a caracteres a retornar con la concatenaicon
+		s1 		: primer string a concatenar
+		s2 		: segundo string a concatenar
 	*/
 	char *result;
     result = (char*)malloc(strlen(s1)+strlen(s2)+1);
@@ -125,19 +118,24 @@ char* concat(char *s1, char *s2){
     strcat(result, s2);
     return result;
 }
-/*------------------------------------------------------------------------------------------*/
-
-
+/* Funcion que, dado un directorio, imprime los archivos regulares y
+subdirectorios en su interior. Devuelve el peso de los archivos exa-
+minados. 														   */
 int Buscar(char* cwd){
+	/*  VARIABLES:
+		DIR *dir : buscar en directorios
+		struct stat st : obtener informacion de los archivos
+		struct dirent *ent : buscar en directorios
+		char filename[] : Almacenar nombre del archivo
+		int resultadoT : Almacenar tamanio de los directorios
+	*/
 	DIR *dir;
 	struct stat st;
 	struct dirent *ent;
     char filename[4096];
-    char* sepStr = "*||*";
     int resultadoT = 0;
 
 		if ((dir = opendir (cwd)) != NULL) {
-			printf("Los archivos en el directorio %s son: \n",cwd);
 	  		while ((ent = readdir (dir)) != NULL) {
 	  			/*Verificamos que no estemos tomando el directorio anterior*/
 	  			if(ent->d_name[0]!='.' && ent->d_name[1]!='.'){
@@ -150,17 +148,18 @@ int Buscar(char* cwd){
 
 					/* Si el archivo es regular, sumamos su peso*/										
 					if(S_ISREG(st.st_mode)){													
-						printf ("	Regular : %s %d \n ", filename, (int)st.st_blocks);
+						printf ("%d %s \n ",(int)st.st_blocks, filename);
 						resultadoT = resultadoT + (int)st.st_blocks;
 					}
 
-					/* Si el archivo es de tipo directorio, lo agregamos a la lista*/
+					/* Si el archivo es de tipo directorio, lo agregamos a la lista
+					y sumamos su peso                                              */
 					else if(S_ISDIR(st.st_mode)){
 						pthread_mutex_lock (&mutexcola);
 						Enqueue(filename);	
 						pthread_mutex_unlock (&mutexcola);	
 
-						printf ("	Directorio : %s %d \n ", filename, (int)st.st_blocks);	
+						printf ("%d %s \n ",(int)st.st_blocks, filename);	
 						resultadoT = resultadoT + (int)st.st_blocks;
 					}
 				}
@@ -176,10 +175,15 @@ int Buscar(char* cwd){
 	  		printf("NO PUDE ABRIR: %s\n",cwd);
 	  		return 1;
 		}
-
 }
 
+/* Funcion que usa el hilo para realizar la busqueda    */
 void *BuscarThread(void *threadid){
+	/*  VARIABLES:
+		long tid: id del thread
+		int i : auxiliar entero
+		char direct[] : Almacena directorio a explorar
+	*/
 	long tid;
 	int i;
 	char  direct[4096];
@@ -201,54 +205,33 @@ void *BuscarThread(void *threadid){
 	}
 }
 
+/* Funcion que se encarga de asignar trabajo a num hilos*/
+void AsignarDir(int num){
+	/*  VARIABLES:
+		int i : Iterador
+		char direct[] : Almacena direccion de directorio
+	*/
+	int i;
+	char direct[4096];
+	
+	/* 	Mientras la busqueda no haya finalizado, entonces revisa cuales
+		hilos estan libres para asignarles un directorio 			  */
 
-
-
-int main (int argc, char *argv[])
-{
-	/* Cosas para la busqueda en directorios*/
-
-    /*Cosas para los threads*/
-  	pthread_t threads[NUM_THREADS];
-  	int rc , i;
-
-  	/*Directorio inicial*/
-  	char cwd[1024], direct[4096];
-
-  	/*Inicializar los mutex*/
-  	pthread_mutex_init(&mutexcola, NULL); 
-
- 	/*Inicializamos el arreglo de estructuras que contendra la informacion de los hilos.*/
-	arrayH = malloc(NUM_THREADS*sizeof(struct Hilos));
-
-/* Revisar los directorios del master para agregarlos a la cola*/
-	if (getcwd(cwd, sizeof(cwd)) != NULL){
-        fprintf(stdout, "Current working dir: %s\n", cwd);
-	}
-    else{
-        perror("getcwd() error");
-    	return 0;
-	}
-
-	/*Buscar en el directorio*/
-	resultado += Buscar(cwd);		// CAMBIAR PARA QUE NO SEA POR DEFECTO
-
-  /* ---------------------------------Creacion de los Threads--------------------------*/
-	for(i=0; i<NUM_THREADS; i++){
-	    rc = pthread_create(&arrayH[i].thread, NULL, BuscarThread, (char *)i);
-  	}
-
-  	/* Esperar a que todos los hilos terminen*/
 	while(completo!=0 ||front!=NULL){
-		for(i=0; i<NUM_THREADS; i++){
+		for(i=0; i<num; i++){
 			if(arrayH[i].libre == 0 && front != NULL){
-		  		completo++;
+				/* Evitar que el hilo maestro termine antes y
+				que otros hilos hagan operaciones sobre la 
+				Cola.                                       */
+
+				completo++;
 		  		pthread_mutex_lock (&mutexcola);
 		  		snprintf(direct,sizeof direct, "%s", (char*)Front());
 				Dequeue();	
 				pthread_mutex_unlock (&mutexcola);
 
-				//free(arrayH[i].direc_asig);
+				/*  Asignar un nuevo directorio al hilo*/
+				free(arrayH[i].direc_asig);
 				arrayH[i].direc_asig = (char*)malloc(strlen(direct)+1);
 		  		memset(arrayH[i].direc_asig,'\0',sizeof(arrayH[i].direc_asig));
 		  		memcpy(arrayH[i].direc_asig,direct,strlen(direct)+1);
@@ -258,12 +241,62 @@ int main (int argc, char *argv[])
 			}
 		}
 	}
+}
 
-	/* Sumar todos los pesos para obtener el total */
-	for(i = 0 ; i<NUM_THREADS;i++){
-		resultado += arrayH[i].pesoArch;
+/*Funcion que se encarga de obtener el peso total del 
+directorio d usando num hilos.                          */
+int obteneResultado(int num, char* d){
+	/*  VARIABLES:
+		int i : Iterador
+		int total : Almacenar peso total
+		struct stat s : Para extraer el tamanio de un archivo
+	*/
+	int i,total = 0;	
+	struct stat s;
+	stat(d,&s);
+
+	total += (int)s.st_blocks;		// Agregamos el tamanio del directorio base
+	for(i = 0 ; i<num;i++){			// Sumamos el almacenado de cada hilo.
+		total += arrayH[i].pesoArch;
 	}
+	return total;					// Devolvemos el peso total
+}
 
-	/* Imprimir cosas al final */
-	printf("Total: %d\n\n", resultado);
+/*Funcion que se encarga de crear num hilos*/
+void crearHilos(int num){
+	/*  VARIABLES:
+		int i : Iterador
+		int rc : Para errores
+	*/
+	int i, rc;
+	for(i=0; i<NUM_THREADS; i++){
+	    rc = pthread_create(&arrayH[i].thread, NULL, BuscarThread, (char *)i);
+  	}
+}
+
+int main (int argc, char *argv[]){
+	/*----------------- Declaracion de Variables-------------------*/	
+	
+	int resultado = 0;	/*Almacena el resultado total.             */
+  	char cwd[1024];  	/*Almacena la direccion del directorio base*/
+
+  	/*---Inicializacion el mutex y asignacion de espacio a arrayH--*/
+  	pthread_mutex_init(&mutexcola, NULL);
+	arrayH = malloc(NUM_THREADS*sizeof(struct Hilos));
+
+	/* --------------------Tomar el directorio base----------------*/
+	if (getcwd(cwd, sizeof(cwd)) != NULL){
+        fprintf(stdout, "Current working dir: %s\n", cwd);}
+    else{
+        perror("getcwd() error");
+    	return 0;}
+
+    /*-----------------------Realizar Busqueda---------------------*/
+	resultado += Buscar(cwd);	/* Sumar el peso del contenido del directorio base*/
+	crearHilos(NUM_THREADS);	/* Creacion de los Hilos*/
+  	AsignarDir(NUM_THREADS); 	/* Asignacion de directorios a los hilos*/
+
+    /*----------------------Terminar Busqueda----------------------*/
+  	resultado += obteneResultado(NUM_THREADS,cwd);	/* Sumar los pesos restantes*/
+	printf("%d\n", resultado);						/* Imprimir resultado*/
 }
