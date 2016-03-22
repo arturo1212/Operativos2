@@ -17,7 +17,7 @@
 #include <time.h>
 #include <signal.h>
 
-#define NUM_THREADS     5
+#define NUM_THREADS     4
 
 /*------------------------------ESTRUCTURAS--------------------------------*/
 
@@ -33,6 +33,7 @@ struct Node {
 char** directorios;
 int* libre, resultados;
 volatile int auxiliar = 0, resultado = 0, esMaestro=0;
+pthread_mutex_t mutexsum;
 
 /* Variables para la cola de Directorios*/
 struct Node* front = NULL;
@@ -124,20 +125,17 @@ int Buscar(char* cwd){
 	DIR *dir;
 	struct stat st;
 	struct dirent *ent;
-    char filename[1024];
+    char filename[4096];
     char* sepStr = "*||*";
-    int size, resultadoT = 0;
-    char* newdir;
-    mode_t modo;
+    int resultadoT = 0;
 
 		if ((dir = opendir (cwd)) != NULL) {
-			printf("El directorio %s contiene: \n\n",cwd);
+			printf("Los archivos en el directorio %s son: \n",cwd);
 	  		while ((ent = readdir (dir)) != NULL) {
 	  			/*Verificamos que no estemos tomando el directorio anterior*/
 	  			if(ent->d_name[0]!='.' && ent->d_name[1]!='.'){
 	  				/* En filename almacenamos la ruta completa del archivo a examinar*/ 					
 		    		snprintf(filename,sizeof filename, "%s/%s", cwd, ent->d_name);
-
 
 		    		/*Usamos la estructura stat para obtener atributos
 		    		importantes, como el peso.*/
@@ -145,28 +143,22 @@ int Buscar(char* cwd){
 
 					/* Si el archivo es regular, sumamos su peso*/										
 					if(S_ISREG(st.st_mode)){													
+						printf ("	Regular : %s %d \n ", filename, (int)st.st_blocks);
 						resultadoT = resultadoT + (int)st.st_blocks;
-						printf ("     Regular : %d %s  \n ", (int)st.st_blocks,filename);
-						}
+					}
 
 					/* Si el archivo es de tipo directorio, lo agregamos a la lista*/
 					else if(S_ISDIR(st.st_mode)){
-						newdir = concat(newdir,sepStr);			//Le agregamos el separador
-						newdir = concat(newdir,filename);		// Le agregamos el nombre del archivo
-						//if(esMaestro==0){						// Si es el hilo maestro, encolamos el directorio.
 						Enqueue(filename);					
-						//}
-						printf ("     Directorio : %d %s \n",(int)st.st_blocks, filename);
-						
+						printf ("	Directorio : %s %d \n ", filename, (int)st.st_blocks);	
+						resultadoT = resultadoT + (int)st.st_blocks;
 					}
 				}
 	  		}
 	  		/*Cerramos el directorio y verificamos si el hilo maestro
 	  		ejecuto la funcion*/
-	  		closedir (dir);					
-			if(esMaestro ==0){
-				resultado = resultadoT;
-			}
+	  		closedir (dir);	
+	  		return resultadoT;				
 		} 
 		/*Mensaje de error si no se pudo abrir el archivo*/	
 		else {			
@@ -177,28 +169,31 @@ int Buscar(char* cwd){
 
 }
 
-
-/*----------------------------------FUNCION DEL THREAD-------------------------*/
 void *BuscarThread(void *threadid){
 	long tid;
 	int i;
+	char  direct[4096];
    	tid = (long)threadid;
    	while(1){
-		if(libre[tid] = 1 && directorios[tid]!=NULL){
-			//printf("Soy el hilo: %ld\n",tid);
-			Buscar(directorios[tid]);
-			//printf("Soy el despues del hilo: %ld\n",tid);
-			libre[tid] = 0;
-			//Print();
+   		if (front!= NULL){
+   			pthread_mutex_lock (&mutexsum);
+
+   			snprintf(direct,sizeof direct, "%s",(char*)Front());
+   			Dequeue();
+
+   			pthread_mutex_unlock (&mutexsum);
+   			
+   			i = Buscar(direct);
+   			pthread_mutex_lock (&mutexsum);  
+   			resultado = resultado + i; 			
+   			pthread_mutex_unlock (&mutexsum);
     		usleep(0);
-		}
-		else if(directorios[tid] == NULL){
-			libre[tid] = 0;
-			auxiliar++;
-		}
+    		auxiliar++;
+    	}
 	}
 }
-/*------------------------------------------------------------------------------*/
+
+
 
 
 int main (int argc, char *argv[])
@@ -210,6 +205,7 @@ int main (int argc, char *argv[])
   	int rc,i, listos = 0, todosL = 5;
   	long t;
   	char cwd[1024];
+  	
  	/*Asignar el tamanio del arreglo de mutex para el bloqueo*/
   	directorios = (char**)malloc(sizeof(char*)*NUM_THREADS);
   	/*Asignar el tamanio del arreglo de hilos libres*/
@@ -227,78 +223,23 @@ int main (int argc, char *argv[])
 	/*Buscar en el directorio*/
 	Buscar(cwd);		// CAMBIAR PARA QUE NO SEA POR DEFECTO
 
-	/*Como solo el maestro puede sumar los pesos y encolar
-	directorios directamente,cambiamos la variable esMaestro
-	a 1 para evitar que los hilos sumen*/
-	esMaestro = 1;
+	//Print();
 
-  /*Inicializar cada posicion del arreglo de enteros en 5*/
   for(i=0;i<NUM_THREADS;i++){
-    libre[i] = NUM_THREADS;
+  	//printf("Acomodando libres\n");
+    libre[i] = 0;
   }
-
+  	//printf("Ya los arregle\n");
 
   /* ---------------------------------Creacion de los Threads--------------------------*/
-  	while(auxiliar<NUM_THREADS){
-	  	for(t=0; t<NUM_THREADS; t++){
-			if (libre[t] == 5){
-			    printf("Principal: Creando Thread %ld\n", t);
-			    libre[t] = 1;
-			    rc = pthread_create(&threads[t], NULL, BuscarThread, (char *)t);
-			    if (rc){
-			       printf("ERROR; return code from pthread_create() is %d\n", rc);
-			       exit(0);
-			    }
-	  		}
-	  	}
+	for(t=0; t<NUM_THREADS; t++){
+		//printf("Principal: Creando Thread %ld\n", t);
+	    libre[t] = 1;
+	    rc = pthread_create(&threads[t], NULL, BuscarThread, (char *)t);
+  	}
+	while(front!=NULL){
+		//Print();
 	}
-	/*---------------------------------------------------------------------------------*/
+	printf("Total: %d\n", resultado);
 
-
-	/*---------------------------Asignar directorios a los Threads libres-------------*/
-	while(front!=NULL && todosL>0){
-		todosL = 5;
-		/* Recorrer cada todos los threads en busca de alguno disponible para trabajar*/
-	  	for(t=0; t<NUM_THREADS; t++){
-	  		/* Si el thread esta disponible y hay elementos en la cola*/
-		  	if (libre[t] == 0 && front!=NULL){
-		  		//printf("EL FRONT ES: %s\n",Front());
-		  		directorios[t] = (char*)malloc(strlen((char*)Front()));
-		  		memset(directorios[t],'\0',sizeof(directorios[t]));
-		  		memcpy(directorios[t],(char*)Front(),strlen((char*)Front())+1);
-		  		//printf("EL DIRECTORIO ES: %s\n",directorios[t]);
-		  		Dequeue();
-		  		libre[t] = 1;
-	    	} 
-	    	if (libre[i] == 0 ){
-	    		todosL--;
-	    	}
-		}
-	}
-  	/*----------------------------------------------------------------------------------*/
-
-
-  	/* ----------------------Esperar a que todos los hilos terminen-------------------*/
-  	// RECORDAR QUE ESTE WHILE DEBE IR JUNTO CON EL OTRO PARA EVITAR CASOS BORDE
- 	while(todosL>0){
- 		todosL = 5;
-	   	for(i=0;i<NUM_THREADS;i++){	/*Si todos no son libres entonces queda trabajo*/
-	    	if (libre[i] == 0 ){
-	    		todosL--;
-	    	}
-	   	}
- 	}
- 	/*---------------------------------------------------------------------------------*/
-
-
-
- 	if(front==NULL){
- 		for(i=0;i<NUM_THREADS;i++){
-	    	printf("directorio T %d: %s\n",i,directorios[i]);
-	   	}
-	   	for(i=0;i<NUM_THREADS;i++){
-	    	//printf("libertad T %d: %d\n",i,libre[i]);
-	   	}
- 		printf("Peso Total: %d\n",resultado);
- 	}
 }
