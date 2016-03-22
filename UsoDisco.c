@@ -27,20 +27,27 @@ struct Node {
   struct Node* next;
 };
 
+struct Hilos { 
+	pthread_t thread;
+	char* direc_asig; 	// Directorio de trabajo actual
+	int pesoArch;		// Peso que ha contado el Hilo
+	char* nuevosD;		// Lista de directorios nuevos encontrados.
+	int libre;			// Indica si el hilo esta libre o no.
+};
+
 /*------------------------------------------------------------------------*/
 
 /*----------------------------VARIABLES GLOBALES -------------------------*/
-char** directorios;
 int* libre, resultados;
-volatile int resultado = 0, esMaestro=0;
-pthread_mutex_t mutexsum,mutexsum1;
+volatile int resultado = 0, completo=0, esMaestro = 0;
+pthread_mutex_t* mutexdir;
+pthread_mutex_t* mutexpeso;
+pthread_mutex_t mutexcola;
+struct Hilos* arrayH;
 
 /* Variables para la cola de Directorios*/
 struct Node* front = NULL;
 struct Node* rear = NULL;
-/*Variables para la cola de cajas*/
-struct Node* frente = NULL;
-struct Node* atras = NULL;
 
 /*-------------------------------------------------------------------------*/
 
@@ -149,7 +156,10 @@ int Buscar(char* cwd){
 
 					/* Si el archivo es de tipo directorio, lo agregamos a la lista*/
 					else if(S_ISDIR(st.st_mode)){
-						Enqueue(filename);					
+						pthread_mutex_lock (&mutexcola);
+						Enqueue(filename);	
+						pthread_mutex_unlock (&mutexcola);	
+
 						printf ("	Directorio : %s %d \n ", filename, (int)st.st_blocks);	
 						resultadoT = resultadoT + (int)st.st_blocks;
 					}
@@ -175,19 +185,17 @@ void *BuscarThread(void *threadid){
 	char  direct[4096];
    	tid = (long)threadid;
    	while(1){
-   		if (front!= NULL){
 
-   			pthread_mutex_lock (&mutexsum);
-   			esMaestro++;
-   			snprintf(direct,sizeof direct, "%s",(char*)Front());
-   			Dequeue();
-			pthread_mutex_unlock (&mutexsum);
+   		if (arrayH[tid].libre == 1){
+  			snprintf(direct,sizeof direct, "%s",arrayH[tid].direc_asig);
+   			completo++;
 
    			i = Buscar(direct);
-   			pthread_mutex_lock (&mutexsum);  
-   			resultado = resultado + i; 	
-   			esMaestro--;		
-   			pthread_mutex_unlock (&mutexsum);
+
+   			/* Suma de pero total al espacio asignado en la estructura*/ 
+   			arrayH[tid].pesoArch += i; 	
+   			completo--;	
+   			arrayH[tid].libre = 0;
     		usleep(0);
 
     	}
@@ -203,10 +211,25 @@ int main (int argc, char *argv[])
 
     /*Cosas para los threads*/
   	pthread_t threads[NUM_THREADS];
-  	int rc,i, listos = 0, todosL = 5;
-  	long t;
-  	char cwd[1024];
- 	pthread_mutex_init(&mutexsum, NULL); 	
+  	int rc , i;
+
+  	/*Directorio inicial*/
+  	char cwd[1024], direct[4096];
+
+  	/*Inicializar los mutex*/
+  	mutexdir = malloc(NUM_THREADS*sizeof(pthread_mutex_t));
+	mutexpeso =  malloc(NUM_THREADS*sizeof(pthread_mutex_t));
+
+	for(i=0; i<NUM_THREADS; i++){
+	   pthread_mutex_init(&mutexdir[i], NULL); 
+  	}
+  	for(i=0; i<NUM_THREADS; i++){
+		pthread_mutex_init(&mutexpeso[i], NULL);     
+  	}
+
+ 	/*Inicializamos el arreglo de estructuras que contendra la informacion de los hilos.*/
+	arrayH = malloc(NUM_THREADS*sizeof(struct Hilos));
+
 /* Revisar los directorios del master para agregarlos a la cola*/
 	if (getcwd(cwd, sizeof(cwd)) != NULL){
         fprintf(stdout, "Current working dir: %s\n", cwd);
@@ -217,17 +240,38 @@ int main (int argc, char *argv[])
 	}
 
 	/*Buscar en el directorio*/
-	Buscar(cwd);		// CAMBIAR PARA QUE NO SEA POR DEFECTO
-
+	resultado += Buscar(cwd);		// CAMBIAR PARA QUE NO SEA POR DEFECTO
 
   /* ---------------------------------Creacion de los Threads--------------------------*/
-	for(t=0; t<NUM_THREADS; t++){
-		//printf("Principal: Creando Thread %ld\n", t);
-	    rc = pthread_create(&threads[t], NULL, BuscarThread, (char *)t);
+	for(i=0; i<NUM_THREADS; i++){
+	    rc = pthread_create(&arrayH[i].thread, NULL, BuscarThread, (char *)i);
   	}
-	while(front!=NULL || esMaestro!=0){
-		//Print();
-	}
-	printf("Total: %d\n", resultado);
 
+  	/* Esperar a que todos los hilos terminen*/
+	while(completo!=0 ||front!=NULL){
+		for(i=0; i<NUM_THREADS; i++){
+			if(arrayH[i].libre == 0 && front != NULL){
+		  		
+		  		pthread_mutex_lock (&mutexcola);
+		  		snprintf(direct,sizeof direct, "%s", (char*)Front());
+				Dequeue();	
+				pthread_mutex_unlock (&mutexcola);
+
+				arrayH[i].direc_asig = (char*)malloc(strlen(direct)+1);
+		  		memset(arrayH[i].direc_asig,'\0',sizeof(arrayH[i].direc_asig));
+		  		memcpy(arrayH[i].direc_asig,direct,strlen(direct));
+			
+				/*Marcar como ocupado al thread*/
+				arrayH[i].libre = 1;
+			}
+		}
+	}
+
+	/* Sumar todos los pesos para obtener el total */
+	for(i = 0 ; i<NUM_THREADS;i++){
+		resultado += arrayH[i].pesoArch;
+	}
+
+	/* Imprimir cosas al final */
+	printf("Total: %d\n\n", resultado);
 }
