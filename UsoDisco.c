@@ -188,7 +188,6 @@ void *BuscarThread(void *threadid){
 
    		if (arrayH[tid].libre == 1){
   			snprintf(direct,sizeof direct, "%s",arrayH[tid].direc_asig);
-   			completo++;
 
    			i = Buscar(direct);
 
@@ -251,7 +250,7 @@ int main (int argc, char *argv[])
 	while(completo!=0 ||front!=NULL){
 		for(i=0; i<NUM_THREADS; i++){
 			if(arrayH[i].libre == 0 && front != NULL){
-		  		
+		  		completo++;
 		  		pthread_mutex_lock (&mutexcola);
 		  		snprintf(direct,sizeof direct, "%s", (char*)Front());
 				Dequeue();	
