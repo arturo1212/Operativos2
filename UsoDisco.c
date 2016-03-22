@@ -216,15 +216,7 @@ int main (int argc, char *argv[])
   	char cwd[1024], direct[4096];
 
   	/*Inicializar los mutex*/
-  	mutexdir = malloc(NUM_THREADS*sizeof(pthread_mutex_t));
-	mutexpeso =  malloc(NUM_THREADS*sizeof(pthread_mutex_t));
-
-	for(i=0; i<NUM_THREADS; i++){
-	   pthread_mutex_init(&mutexdir[i], NULL); 
-  	}
-  	for(i=0; i<NUM_THREADS; i++){
-		pthread_mutex_init(&mutexpeso[i], NULL);     
-  	}
+  	pthread_mutex_init(&mutexcola, NULL); 
 
  	/*Inicializamos el arreglo de estructuras que contendra la informacion de los hilos.*/
 	arrayH = malloc(NUM_THREADS*sizeof(struct Hilos));
@@ -256,6 +248,7 @@ int main (int argc, char *argv[])
 				Dequeue();	
 				pthread_mutex_unlock (&mutexcola);
 
+				//free(arrayH[i].direc_asig);
 				arrayH[i].direc_asig = (char*)malloc(strlen(direct)+1);
 		  		memset(arrayH[i].direc_asig,'\0',sizeof(arrayH[i].direc_asig));
 		  		memcpy(arrayH[i].direc_asig,direct,strlen(direct));
