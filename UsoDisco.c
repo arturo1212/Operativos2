@@ -139,7 +139,7 @@ int Buscar(char* cwd){
     if ((dir = opendir (cwd)) != NULL) {
         while ((ent = readdir (dir)) != NULL) {
           /*Verificamos que no estemos tomando el directorio anterior*/
-          if(ent->d_name[0]!='.' && ent->d_name[1]!='.'){
+          if((strcmp(ent->d_name,".")!=0) && (strcmp(ent->d_name,"..")!=0)){
             /* En filename almacenamos la ruta completa del archivo a examinar*/          
             snprintf(filename,sizeof filename, "%s/%s", cwd, ent->d_name);
 
@@ -279,16 +279,11 @@ int main (int argc, char *argv[]){
   /*----------------- Declaracion de Variables-------------------*/ 
   
   int resultado = 0;  /*Almacena el resultado total.             */
-  char cwd[1024];   /*Almacena la direccion del directorio base*/
+  char *cwd;   /*Almacena la direccion del directorio base*/
   char op1,op2;     // Variables auxiliares para la lectura de parametros
   int index;
 if(argc==1){
-    if (getcwd(cwd, sizeof(cwd)) != NULL){
-          fprintf(stdout, "Current working dir: %s\n", cwd);
-    }else{
-      perror("getcwd() error");
-      return 0;
-    }
+    cwd=".";
     salida="/dev/stdout";
   }else{
     if(argc==2){
@@ -312,15 +307,11 @@ return 0;
           if (argv[1][1]=='n'){
 
             NUM_THREADS=atoi(argv[2]);
-            if (getcwd(cwd, sizeof(cwd)) != NULL){
-                  fprintf(stdout, "Current working dir: %s\n", cwd);
-            }else{
-              perror("getcwd() error");
-              return 1;
-            }
+            cwd=".";
             salida="/dev/stdout";
 
           }else if(argv[1][1]=='d'){
+            cwd = (char *)malloc(strlen(argv[2])+1);
             memcpy(cwd,argv[2],strlen(argv[2])+1);
             cwd[strlen(cwd)] = '\0';
             salida="/dev/stdout";
@@ -330,12 +321,7 @@ return 0;
             salida = (char *)malloc(strlen(argv[2])+1);
             memcpy(salida,argv[2],strlen(argv[2]));
             salida[strlen(salida)] = '\0';
-            if (getcwd(cwd, sizeof(cwd)) != NULL){
-                  fprintf(stdout, "Current working dir: %s\n", cwd);
-            }else{
-              perror("getcwd() error");
-              return 1;
-            }
+            cwd=".";
 
           }else{
             fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
@@ -358,6 +344,7 @@ return 0;
               if (argv[1][1]=='n'){
                 NUM_THREADS=atoi(argv[2]);
               }else if(argv[1][1]=='d'){
+                cwd = (char *)malloc(strlen(argv[2])+1);
                 memcpy(cwd,argv[2],strlen(argv[2])+1);
                 cwd[strlen(cwd)] = '\0';
               }else if(argv[1][1]=='o'){
@@ -387,12 +374,7 @@ return 0;
                   if(op2=='d'){
                     salida="/dev/stdout";
                   }else if(op2=='o'){
-                    if (getcwd(cwd, sizeof(cwd)) != NULL){
-                      fprintf(stdout, "Current working dir: %s\n", cwd);
-                    }else{
-                      perror("getcwd() error");
-                      return 0;
-                    }
+                    cwd=".";
                   }
                 }else if (op1=='d'){
                   if(op2=='n'){
@@ -400,12 +382,7 @@ return 0;
                   }
                 }else if(op1=='o'){
                   if(op2=='n'){
-                    if (getcwd(cwd, sizeof(cwd)) != NULL){
-                      fprintf(stdout, "Current working dir: %s\n", cwd);
-                    }else{
-                      perror("getcwd() error");
-                      return 1;
-                    }
+                    cwd=".";
                   }
                 }
               }else{
@@ -431,6 +408,7 @@ return 0;
                   if (argv[index][1]=='n'){
                     NUM_THREADS=atoi(argv[index+1]);
                   }else if(argv[index][1]=='d'){
+                    cwd = (char *)malloc(strlen(argv[index+1])+1);
                     memcpy(cwd,argv[index+1],strlen(argv[index+1])+1);
                     cwd[strlen(cwd)] = '\0';
                   }else if(argv[index][1]=='o'){
