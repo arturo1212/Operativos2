@@ -321,7 +321,7 @@ return 0;
             salida="/dev/stdout";
 
           }else if(argv[1][1]=='d'){
-            memcpy(cwd,argv[2],strlen(argv[2]));
+            memcpy(cwd,argv[2],strlen(argv[2])+1);
             cwd[strlen(cwd)] = '\0';
             salida="/dev/stdout";
 
@@ -358,7 +358,7 @@ return 0;
               if (argv[1][1]=='n'){
                 NUM_THREADS=atoi(argv[2]);
               }else if(argv[1][1]=='d'){
-                memcpy(cwd,argv[2],strlen(argv[2]));
+                memcpy(cwd,argv[2],strlen(argv[2])+1);
                 cwd[strlen(cwd)] = '\0';
               }else if(argv[1][1]=='o'){
                 salida = (char *)malloc(strlen(argv[2])+1);
@@ -373,7 +373,7 @@ return 0;
                 if(argv[3][1]=='n'){
                   NUM_THREADS=atoi(argv[4]);
                 }else if(argv[3][1]=='d'){
-                  memcpy(cwd,argv[4],strlen(argv[4]));
+                  memcpy(cwd,argv[4],strlen(argv[4])+1);
                   cwd[strlen(cwd)] = '\0';
                 }else if(argv[3][1]=='o'){
                   salida = (char *)malloc(strlen(argv[4])+1);
@@ -417,7 +417,7 @@ return 0;
               return 1;
             }
           }else{
-            if(argc=6){
+            if(argc==6){
               //Mensaje de error
               fprintf(stderr, "Uso esperado : %s  [-h] |  [-n i] [-d directorio] [-o salida ]\n", argv[0]);
               return 1;
@@ -431,7 +431,7 @@ return 0;
                   if (argv[index][1]=='n'){
                     NUM_THREADS=atoi(argv[index+1]);
                   }else if(argv[index][1]=='d'){
-                    memcpy(cwd,argv[index+1],strlen(argv[index+1]));
+                    memcpy(cwd,argv[index+1],strlen(argv[index+1])+1);
                     cwd[strlen(cwd)] = '\0';
                   }else if(argv[index][1]=='o'){
                     salida = (char *)malloc(strlen(argv[index+1])+1);
