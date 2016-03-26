@@ -77,7 +77,7 @@ int Buscar(char* cwd){
   struct stat st;
   struct dirent *ent;
     char filename[4096];
-    int resultadoT = 0;
+    int resultadoT = 0, auxSuma = 0;
 
     if ((dir = opendir (cwd)) != NULL) {
         while ((ent = readdir (dir)) != NULL) {
@@ -92,8 +92,9 @@ int Buscar(char* cwd){
 
           /* Si el archivo es regular, sumamos su peso*/                    
           if(S_ISREG(st.st_mode)){                          
-            fprintf (fap,"%d %s \n",(int)st.st_blocks, filename);
+            
             resultadoT = resultadoT + (int)st.st_blocks;
+            auxSuma = auxSuma + (int)st.st_blocks;
           }
 
           /* Si el archivo es de tipo directorio, lo agregamos a la lista
@@ -102,12 +103,12 @@ int Buscar(char* cwd){
             pthread_mutex_lock (&mutexcola);
             Enqueue(filename);  
             pthread_mutex_unlock (&mutexcola);  
-
-            fprintf (fap,"%d %s \n",(int)st.st_blocks, filename); 
             resultadoT = resultadoT + (int)st.st_blocks;
+            auxSuma = auxSuma + (int)st.st_blocks;
+          }
           }
         }
-        }
+        fprintf (fap,"%d %s \n",(int)auxSuma, cwd);
         /*Cerramos el directorio y verificamos si el hilo maestro
         ejecuto la funcion*/
         closedir (dir); 
